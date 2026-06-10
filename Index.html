@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Reviews 2024</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        .hidden { display: none; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+
+    <div id="auth-section" class="flex items-center justify-center min-h-screen">
+        <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-md mx-4">
+            <h2 id="auth-title" class="text-2xl font-bold mb-6 text-center text-blue-600">Create Account (Sign Up)</h2>
+            
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2">Email Address</label>
+                <input type="email" id="auth-email" class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:border-blue-500" placeholder="example@mail.com">
+            </div>
+            
+            <div class="mb-6">
+                <label class="block text-gray-700 text-sm font-bold mb-2">Password</label>
+                <input type="password" id="auth-password" class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:border-blue-500" placeholder="••••••••">
+            </div>
+            
+            <button id="btn-primary" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700 transition duration-200">Sign Up</button>
+            
+            <p class="mt-4 text-center text-sm text-gray-600">
+                <span id="auth-switch-text">Already have an account?</span> 
+                <button id="btn-switch" class="text-blue-600 font-bold hover:underline focus:outline-none">Log In</button>
+            </p>
+        </div>
+    </div>
+
+    <div id="dashboard-section" class="hidden min-h-screen flex flex-col">
+        <header class="bg-blue-600 text-white p-4 flex justify-between items-center shadow">
+            <h1 class="text-xl font-bold">📱 Mobile Reviews Dashboard</h1>
+            <div class="flex items-center gap-4">
+                <span id="user-display" class="text-sm bg-blue-700 py-1 px-3 rounded"></span>
+                <button id="btn-logout" class="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-3 rounded text-sm transition">Logout</button>
+            </div>
+        </header>
+
+        <main class="flex-1 p-6 max-w-4xl w-full mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h3 class="text-lg font-bold mb-4 text-gray-800">Add New Mobile Review</h3>
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Mobile Name</label>
+                    <input type="text" id="phone-name" class="w-full p-2 border border-gray-300 rounded" placeholder="e.g., iPhone 15 Pro">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Your Review</label>
+                    <textarea id="phone-review" rows="4" class="w-full p-2 border border-gray-300 rounded" placeholder="Write your review here..."></textarea>
+                </div>
+                <button id="btn-submit-review" class="w-full bg-green-600 text-white font-bold py-2 px-4 rounded hover:bg-green-700 transition">Submit Review</button>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow flex flex-col">
+                <h3 class="text-lg font-bold mb-4 text-gray-800">All Reviews (Saved in Firestore)</h3>
+                <div id="reviews-container" class="flex-1 overflow-y-auto space-y-4 max-h-[350px]">
+                    <p class="text-gray-500 italic">No reviews added yet.</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, onSnapshot, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // AAPKA APNA CONFIG CODE (Jo aapne bheja)
+        const firebaseConfig = {
+            apiKey: "AIzaSyBQN5xfp5B85zJXicgAzUv8jVso1qwXrOc",
+            authDomain: "mobile-reviews-2024.firebaseapp.com",
+            projectId: "mobile-reviews-2024",
+            storageBucket: "mobile-reviews-2024.firebasestorage.app",
+            messagingSenderId: "1063042635586",
+            appId: "1:1063042635586:web:7b63fda713f2d55ccd9adb",
+            measurementId: "G-T6Y6SV3EK6"
+        };
+
+        // Firebase Initialize
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // UI Elements
+        const authSection = document.getElementById('auth-section');
+        const dashboardSection = document.getElementById('dashboard-section');
+        const authTitle = document.getElementById('auth-title');
+        const authEmail = document.getElementById('auth-email');
+        const authPassword = document.getElementById('auth-password');
+        const btnPrimary = document.getElementById('btn-primary');
+        const btnSwitch = document.getElementById('btn-switch');
+        const authSwitchText = document.getElementById('auth-switch-text');
+        const userDisplay = document.getElementById('user-display');
+        const btnLogout = document.getElementById('btn-logout');
+        
+        const phoneName = document.getElementById('phone-name');
+        const phoneReview = document.getElementById('phone-review');
+        const btnSubmitReview = document.getElementById('btn-submit-review');
+        const reviewsContainer = document.getElementById('reviews-container');
+
+        let isLoginMode = false; // Pehle screen Sign Up ki dikhegi
+
+        // Login aur Signup mode switch karne ke liye
+        btnSwitch.addEventListener('click', () => {
+            isLoginMode = !isLoginMode;
+            if (isLoginMode) {
+                authTitle.innerText = "Welcome Back (Log In)";
+                btnPrimary.innerText = "Log In";
+                authSwitchText.innerText = "Don't have an account?";
+                btnSwitch.innerText = "Sign Up";
+            } else {
+                authTitle.innerText = "Create Account (Sign Up)";
+                btnPrimary.innerText = "Sign Up";
+                authSwitchText.innerText = "Already have an account?";
+                btnSwitch.innerText = "Log In";
+            }
+        });
+
+        // Authentication Logic (Login/Signup Button Click)
+        btnPrimary.addEventListener('click', () => {
+            const email = authEmail.value.trim();
+            const password = authPassword.value;
+
+            if(!email || !password) {
+                alert("Please fill all fields");
+                return;
+            }
+
+            if (isLoginMode) {
+                // Log In Process
+                signInWithEmailAndPassword(auth, email, password)
+                    .then(() => alert("Logged in successfully!"))
+                    .catch(err => alert("Error: " + err.message));
+            } else {
+                // Sign Up Process
+                createUserWithEmailAndPassword(auth, email, password)
+                    .then(() => alert("Account created successfully!"))
+                    .catch(err => alert("Error: " + err.message));
+            }
+        });
+
+        // Logout Logic
+        btnLogout.addEventListener('click', () => {
+            signOut(auth).then(() => alert("Logged out!"));
+        });
+
+        // Track User Status (Check if user is logged in or out)
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                authSection.classList.add('hidden');
+                dashboardSection.classList.remove('hidden');
+                userDisplay.innerText = user.email;
+                loadReviews(); // Reviews load karo realtime mein
+            } else {
+                authSection.classList.remove('hidden');
+                dashboardSection.classList.add('hidden');
+                authEmail.value = "";
+                authPassword.value = "";
+            }
+        });
+
+        // Firestore Logic: Review Submit Karna
+        btnSubmitReview.addEventListener('click', async () => {
+            const name = phoneName.value.trim();
+            const review = phoneReview.value.trim();
+
+            if (!name || !review) {
+                alert("Please enter both Mobile Name and Review.");
+                return;
+            }
+
+            try {
+                await addDoc(collection(db, "reviews"), {
+                    mobileName: name,
+                    mobileReview: review,
+                    userEmail: auth.currentUser.email,
+                    createdAt: new Date()
+                });
+                phoneName.value = "";
+                phoneReview.value = "";
+                alert("Review saved to database!");
+            } catch (error) {
+                alert("Database Error: " + error.message);
+            }
+        });
+
+        // Firestore Logic: Realtime Database se Reviews dikhana
+        function loadReviews() {
+            const q = query(collection(db, "reviews"), orderBy("createdAt", "desc"));
+            onSnapshot(q, (snapshot) => {
+                reviewsContainer.innerHTML = "";
+                if(snapshot.empty) {
+                    reviewsContainer.innerHTML = `<p class="text-gray-500 italic">No reviews added yet.</p>`;
+                    return;
+                }
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const reviewElement = document.createElement('div');
+                    reviewElement.className = "p-4 bg-gray-50 rounded-lg border-l-4 border-blue-500 shadow-sm";
+                    reviewElement.innerHTML = `
+                        <h4 class="font-bold text-gray-800">${data.mobileName}</h4>
+                        <p class="text-gray-600 text-sm mt-1">${data.mobileReview}</p>
+                        <span class="text-xs text-gray-400 block mt-2">By: ${data.userEmail}</span>
+                    `;
+                    reviewsContainer.appendChild(reviewElement);
+                });
+            });
+        }
+    </script>
+</body>
+</html>
